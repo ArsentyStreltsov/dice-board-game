@@ -1,0 +1,43 @@
+.color-picker {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  text-align: left;
+}
+
+.color-picker legend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.color-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+}
+
+.color-picker__swatch {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.color-picker__swatch--active {
+  border-color: #0f172a;
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 4px #0f172a;
+}
+
+.color-picker__swatch:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}

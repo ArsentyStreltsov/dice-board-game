@@ -1,0 +1,52 @@
+.token {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.token svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.2));
+}
+
+.token--sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+.token--md {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.token--appear {
+  animation: token-appear 220ms ease-out;
+}
+
+.token--remove {
+  animation: token-remove 220ms ease-in forwards;
+}
+
+@keyframes token-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes token-remove {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}

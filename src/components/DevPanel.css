@@ -1,0 +1,45 @@
+.dev-panel {
+  margin-top: 1.25rem;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dev-panel__body {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dev-panel__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.dev-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.dev-panel__row label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.dev-panel__row select {
+  min-width: 4.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.4rem 0.45rem;
+  background: #ffffff;
+  color: #0f172a;
+}

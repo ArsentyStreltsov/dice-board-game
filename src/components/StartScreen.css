@@ -1,0 +1,128 @@
+.start-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.start-screen__card {
+  width: min(100%, 420px);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  padding: 2rem 1.5rem;
+  display: grid;
+  gap: 1rem;
+  text-align: center;
+}
+
+.start-screen__eyebrow {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.start-screen__title {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 2.6rem);
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.start-screen__desc {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.start-screen__players {
+  border: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.start-screen__players legend {
+  padding: 0;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.start-screen__options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.start-screen__option {
+  display: grid;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.7rem 0.5rem;
+  cursor: pointer;
+  background: #f8fafc;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.start-screen__option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.start-screen__option:has(input:checked) {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.start-screen__mode-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.start-screen__join {
+  display: grid;
+  gap: 0.4rem;
+  text-align: left;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.start-screen__join input {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.start-screen__error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.start-screen__colors {
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.start-screen__hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}

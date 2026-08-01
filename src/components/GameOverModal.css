@@ -1,0 +1,39 @@
+.game-over {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 20;
+}
+
+.game-over__card {
+  width: min(100%, 360px);
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  padding: 1.75rem 1.35rem;
+  text-align: center;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.game-over__message {
+  margin: 0;
+  font-size: clamp(1.4rem, 4vw, 1.85rem);
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.game-over__hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.game-over__actions {
+  display: grid;
+  gap: 0.55rem;
+}

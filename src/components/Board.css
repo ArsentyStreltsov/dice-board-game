@@ -1,0 +1,51 @@
+.board-wrap {
+  width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: 1.6rem repeat(6, 1fr);
+  gap: 0.4rem;
+}
+
+.board-row-contents {
+  display: contents;
+}
+
+.board-corner {
+  width: 1.6rem;
+  height: 1.4rem;
+}
+
+.board-label {
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.board-label--col {
+  height: 1.4rem;
+}
+
+.board-label--row {
+  width: 1.6rem;
+}
+
+@media (max-width: 640px) {
+  .board-wrap {
+    width: 100%;
+  }
+
+  .board-grid {
+    gap: 0.28rem;
+  }
+
+  .board-corner,
+  .board-label--row {
+    width: 1.2rem;
+  }
+}

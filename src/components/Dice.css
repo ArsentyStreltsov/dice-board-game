@@ -1,0 +1,64 @@
+.dice-pair {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.die {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  display: grid;
+  place-items: center;
+}
+
+.dice-pair--rolling .die {
+  animation: dice-shake 0.12s linear infinite;
+}
+
+.die-empty {
+  color: #94a3b8;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.die-pips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 70%;
+  height: 70%;
+  gap: 2px;
+}
+
+.die-pip {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.die-pip--on {
+  background: #0f172a;
+}
+
+@keyframes dice-shake {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(1px, -1px) rotate(-4deg);
+  }
+  50% {
+    transform: translate(-1px, 1px) rotate(4deg);
+  }
+  75% {
+    transform: translate(1px, 1px) rotate(-2deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { nextInitiativeRoller } from '@shared/game/initiative.ts'
 import type { PlayerId } from '@shared/game/types.ts'
-import { ActionLog } from './components/ActionLog'
 import { Board } from './components/Board'
 import { DevPanel } from './components/DevPanel'
 import { Dice } from './components/Dice'
@@ -224,52 +223,6 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             players={state.players}
             currentPlayerId={state.currentPlayerId}
           />
-          <ActionLog entries={state.log} />
-        </section>
-
-        <section className="panel panel--board">
-          <Board
-            board={state.board}
-            players={state.players}
-            availableActions={state.availableActions}
-            winningCells={state.winningCells}
-            showTargets={state.phase === 'selectingCell' && !isRolling}
-            interactive={state.phase === 'selectingCell' && !isRolling}
-            accentColor={currentPlayer?.color}
-            onSelect={local.selectCell}
-          />
-        </section>
-
-        <section className="panel panel--controls">
-          <GameStatus
-            phase={state.phase}
-            currentPlayer={currentPlayer}
-            dice={state.dice}
-            availableActions={state.availableActions}
-            isRolling={isRolling}
-          />
-
-          <Dice dice={shownDice} isRolling={isRolling} />
-
-          {state.phase === 'turnSkipped' ? (
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={local.completeSkip}
-            >
-              Завершить ход
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={!canRoll}
-              onClick={local.roll}
-            >
-              Бросить кубики
-            </button>
-          )}
-
           <DevPanel
             open={devOpen}
             onToggle={() => setDevOpen((v) => !v)}
@@ -280,6 +233,48 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             onClearBoard={local.devClearBoard}
             onNextPlayer={local.devNextPlayer}
             onSetCell={local.devSetCell}
+          />
+        </section>
+
+        <section className="panel panel--board">
+          <div className="board-toolbar">
+            <GameStatus
+              phase={state.phase}
+              currentPlayer={currentPlayer}
+              dice={state.dice}
+              availableActions={state.availableActions}
+              isRolling={isRolling}
+            />
+            <Dice dice={shownDice} isRolling={isRolling} />
+            {state.phase === 'turnSkipped' ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={local.completeSkip}
+              >
+                Завершить ход
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!canRoll}
+                onClick={local.roll}
+              >
+                Бросить кубики
+              </button>
+            )}
+          </div>
+
+          <Board
+            board={state.board}
+            players={state.players}
+            availableActions={state.availableActions}
+            winningCells={state.winningCells}
+            showTargets={state.phase === 'selectingCell' && !isRolling}
+            interactive={state.phase === 'selectingCell' && !isRolling}
+            accentColor={currentPlayer?.color}
+            onSelect={local.selectCell}
           />
         </section>
       </main>
@@ -358,10 +353,45 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
             players={game.players}
             currentPlayerId={game.currentPlayerId}
           />
-          <ActionLog entries={game.log} />
         </section>
 
         <section className="panel panel--board">
+          <div className="board-toolbar">
+            <GameStatus
+              phase={game.phase}
+              currentPlayer={currentPlayer}
+              dice={game.dice}
+              availableActions={game.availableActions}
+              isRolling={online.isRolling}
+            />
+
+            {!online.isMyTurn && game.phase !== 'gameOver' ? (
+              <p className="app__turn-hint">Сейчас ход другого игрока.</p>
+            ) : null}
+
+            <Dice dice={online.shownDice} isRolling={online.isRolling} />
+
+            {game.phase === 'turnSkipped' ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!canSkip}
+                onClick={online.completeSkip}
+              >
+                Завершить ход
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!canRoll}
+                onClick={online.roll}
+              >
+                Бросить кубики
+              </button>
+            )}
+          </div>
+
           <Board
             board={game.board}
             players={game.players}
@@ -372,42 +402,6 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
             accentColor={currentPlayer?.color}
             onSelect={online.selectCell}
           />
-        </section>
-
-        <section className="panel panel--controls">
-          <GameStatus
-            phase={game.phase}
-            currentPlayer={currentPlayer}
-            dice={game.dice}
-            availableActions={game.availableActions}
-            isRolling={online.isRolling}
-          />
-
-          {!online.isMyTurn && game.phase !== 'gameOver' ? (
-            <p className="app__turn-hint">Сейчас ход другого игрока.</p>
-          ) : null}
-
-          <Dice dice={online.shownDice} isRolling={online.isRolling} />
-
-          {game.phase === 'turnSkipped' ? (
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={!canSkip}
-              onClick={online.completeSkip}
-            >
-              Завершить ход
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={!canRoll}
-              onClick={online.roll}
-            >
-              Бросить кубики
-            </button>
-          )}
         </section>
       </main>
 

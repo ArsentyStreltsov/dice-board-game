@@ -59,6 +59,10 @@
   gap: 0.5rem;
 }
 
+.start-screen__options--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .start-screen__option {
   display: grid;
   place-items: center;
@@ -69,6 +73,12 @@
   background: #f8fafc;
   font-weight: 700;
   color: #0f172a;
+}
+
+.start-screen__option span {
+  font-size: 0.85rem;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .start-screen__option input {

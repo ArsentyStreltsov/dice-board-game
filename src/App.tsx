@@ -9,7 +9,7 @@ import { GameStatus } from './components/GameStatus'
 import { InitiativeScreen } from './components/InitiativeScreen'
 import { LobbyScreen } from './components/LobbyScreen'
 import { PlayerList } from './components/PlayerList'
-import { StartScreen } from './components/StartScreen'
+import { StartScreen, type LocalStartConfig } from './components/StartScreen'
 import { useGame } from './hooks/useGame'
 import { useOnlineGame } from './hooks/useOnlineGame'
 import './styles/global.css'
@@ -46,9 +46,11 @@ function App() {
   ) {
     return (
       <StartScreen
-        onStartLocal={(count, colors) => {
+        onStartLocal={(config: LocalStartConfig) => {
           setPlayMode('local')
-          local.startGame(count, colors)
+          local.startGame(config.playersCount, config.colors, {
+            botDifficulty: config.botDifficulty,
+          })
         }}
         onCreateOnline={(count) => {
           setPlayMode('online')
@@ -124,7 +126,8 @@ function App() {
         canRoll={
           local.state.phase === 'initiative' &&
           roller !== null &&
-          !local.isRolling
+          !local.isRolling &&
+          !(local.botConfig && roller === local.botConfig.playerId)
         }
         isRolling={local.isRolling}
         shownDice={local.shownDice}
@@ -171,9 +174,11 @@ function App() {
 
   return (
     <StartScreen
-      onStartLocal={(count, colors) => {
+      onStartLocal={(config: LocalStartConfig) => {
         setPlayMode('local')
-        local.startGame(count, colors)
+        local.startGame(config.playersCount, config.colors, {
+          botDifficulty: config.botDifficulty,
+        })
       }}
       onCreateOnline={(count) => {
         setPlayMode('online')
@@ -197,18 +202,32 @@ type LocalGameViewProps = {
 }
 
 function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProps) {
-  const { state, isRolling, shownDice } = local
+  const { state, isRolling, shownDice, isBotTurn, botConfig } = local
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId)
   const winner = state.winner
     ? state.players.find((p) => p.id === state.winner)
     : undefined
-  const canRoll = state.phase === 'waitingForRoll' && !isRolling
+  const canRoll =
+    state.phase === 'waitingForRoll' && !isRolling && !isBotTurn
+  const canSelect =
+    state.phase === 'selectingCell' && !isRolling && !isBotTurn
 
   return (
     <div className="app">
       <header className="app__header">
         <div>
-          <p className="app__eyebrow">Dice Grid · локально</p>
+          <p className="app__eyebrow">
+            Dice Grid · локально
+            {botConfig
+              ? ` · vs компьютер (${
+                  botConfig.difficulty === 'easy'
+                    ? 'лёгкий'
+                    : botConfig.difficulty === 'medium'
+                      ? 'средний'
+                      : 'сложный'
+                })`
+              : ''}
+          </p>
           <h1 className="app__title">Игровое поле</h1>
         </div>
         <button type="button" className="btn btn--ghost" onClick={onExit}>
@@ -245,11 +264,15 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
               availableActions={state.availableActions}
               isRolling={isRolling}
             />
+            {isBotTurn && state.phase !== 'gameOver' ? (
+              <p className="app__turn-hint">Компьютер думает…</p>
+            ) : null}
             <Dice dice={shownDice} isRolling={isRolling} />
             {state.phase === 'turnSkipped' ? (
               <button
                 type="button"
                 className="btn btn--primary"
+                disabled={isBotTurn}
                 onClick={local.completeSkip}
               >
                 Завершить ход
@@ -272,7 +295,7 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             availableActions={state.availableActions}
             winningCells={state.winningCells}
             showTargets={state.phase === 'selectingCell' && !isRolling}
-            interactive={state.phase === 'selectingCell' && !isRolling}
+            interactive={canSelect}
             accentColor={currentPlayer?.color}
             onSelect={local.selectCell}
           />
@@ -286,7 +309,9 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             const colors = Object.fromEntries(
               state.players.map((p) => [p.id, p.color]),
             ) as Partial<Record<PlayerId, string>>
-            local.startGame(state.playersCount, colors)
+            local.startGame(state.playersCount, colors, {
+              botDifficulty: botConfig?.difficulty,
+            })
           }}
           onExitToMenu={onExit}
         />

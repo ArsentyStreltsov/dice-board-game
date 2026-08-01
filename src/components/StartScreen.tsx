@@ -3,15 +3,20 @@ import {
   COLOR_PALETTE,
   defaultColorForSeat,
 } from '@shared/game/constants.ts'
+import type { BotDifficulty } from '@shared/game/botAi.ts'
 import type { PlayerId } from '@shared/game/types.ts'
 import { ColorPicker } from './ColorPicker'
 import './StartScreen.css'
 
+export type LocalStartConfig = {
+  playersCount: 2 | 3 | 4
+  colors: Partial<Record<PlayerId, string>>
+  opponent: 'friends' | 'bot'
+  botDifficulty?: BotDifficulty
+}
+
 type StartScreenProps = {
-  onStartLocal: (
-    playersCount: 2 | 3 | 4,
-    colors: Partial<Record<PlayerId, string>>,
-  ) => void
+  onStartLocal: (config: LocalStartConfig) => void
   onCreateOnline: (playersCount: 2 | 3 | 4) => void
   onJoinOnline: (code: string) => void
   onlineError?: string | null
@@ -30,6 +35,8 @@ export function StartScreen({
   const [mode, setMode] = useState<Mode>('choose')
   const [playersCount, setPlayersCount] = useState<2 | 3 | 4>(2)
   const [joinCode, setJoinCode] = useState('')
+  const [localOpponent, setLocalOpponent] = useState<'friends' | 'bot'>('friends')
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
   const [localColors, setLocalColors] = useState<Record<number, string>>({
     1: defaultColorForSeat(0),
     2: defaultColorForSeat(1),
@@ -37,9 +44,12 @@ export function StartScreen({
     4: defaultColorForSeat(3),
   })
 
+  const colorSlots =
+    mode === 'local' && localOpponent === 'bot' ? 1 : playersCount
+
   const localTaken = useMemo(() => {
-    return Array.from({ length: playersCount }, (_, i) => localColors[i + 1]!)
-  }, [localColors, playersCount])
+    return Array.from({ length: colorSlots }, (_, i) => localColors[i + 1]!)
+  }, [localColors, colorSlots])
 
   return (
     <section className="start-screen">
@@ -79,32 +89,90 @@ export function StartScreen({
 
         {mode === 'local' || mode === 'online-create' ? (
           <>
-            <fieldset className="start-screen__players">
-              <legend>Количество игроков</legend>
-              <div className="start-screen__options">
-                {([2, 3, 4] as const).map((count) => (
-                  <label key={count} className="start-screen__option">
+            {mode === 'local' ? (
+              <fieldset className="start-screen__players">
+                <legend>С кем играть</legend>
+                <div className="start-screen__options start-screen__options--2">
+                  <label className="start-screen__option">
                     <input
                       type="radio"
-                      name="players"
-                      value={count}
-                      checked={playersCount === count}
-                      onChange={() => setPlayersCount(count)}
+                      name="opponent"
+                      checked={localOpponent === 'friends'}
+                      onChange={() => setLocalOpponent('friends')}
                     />
-                    <span>{count}</span>
+                    <span>С друзьями</span>
                   </label>
-                ))}
-              </div>
-            </fieldset>
+                  <label className="start-screen__option">
+                    <input
+                      type="radio"
+                      name="opponent"
+                      checked={localOpponent === 'bot'}
+                      onChange={() => {
+                        setLocalOpponent('bot')
+                        setPlayersCount(2)
+                      }}
+                    />
+                    <span>С компьютером</span>
+                  </label>
+                </div>
+              </fieldset>
+            ) : null}
+
+            {mode === 'local' && localOpponent === 'bot' ? (
+              <fieldset className="start-screen__players">
+                <legend>Сложность бота</legend>
+                <div className="start-screen__options">
+                  {(
+                    [
+                      ['easy', 'Лёгкий'],
+                      ['medium', 'Средний'],
+                      ['hard', 'Сложный'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <label key={value} className="start-screen__option">
+                      <input
+                        type="radio"
+                        name="difficulty"
+                        checked={botDifficulty === value}
+                        onChange={() => setBotDifficulty(value)}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <fieldset className="start-screen__players">
+                <legend>Количество игроков</legend>
+                <div className="start-screen__options">
+                  {([2, 3, 4] as const).map((count) => (
+                    <label key={count} className="start-screen__option">
+                      <input
+                        type="radio"
+                        name="players"
+                        value={count}
+                        checked={playersCount === count}
+                        onChange={() => setPlayersCount(count)}
+                      />
+                      <span>{count}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
 
             {mode === 'local' ? (
               <div className="start-screen__colors">
-                {Array.from({ length: playersCount }, (_, i) => {
+                {Array.from({ length: colorSlots }, (_, i) => {
                   const id = (i + 1) as PlayerId
                   return (
                     <ColorPicker
                       key={id}
-                      label={`Игрок ${id}`}
+                      label={
+                        localOpponent === 'bot' && id === 1
+                          ? 'Ваш цвет'
+                          : `Игрок ${id}`
+                      }
                       value={localColors[id]!}
                       takenColors={localTaken}
                       onChange={(color) =>
@@ -113,6 +181,11 @@ export function StartScreen({
                     />
                   )
                 })}
+                {localOpponent === 'bot' ? (
+                  <p className="start-screen__hint">
+                    Компьютер получит другой свободный цвет автоматически.
+                  </p>
+                ) : null}
               </div>
             ) : (
               <p className="start-screen__hint">
@@ -127,11 +200,27 @@ export function StartScreen({
               disabled={onlineBusy}
               onClick={() => {
                 if (mode === 'local') {
+                  const count: 2 | 3 | 4 =
+                    localOpponent === 'bot' ? 2 : playersCount
                   const colors: Partial<Record<PlayerId, string>> = {}
-                  for (let i = 1; i <= playersCount; i++) {
-                    colors[i as PlayerId] = localColors[i]!
+                  for (let i = 1; i <= count; i++) {
+                    if (localOpponent === 'bot' && i === 2) {
+                      const human = localColors[1]!
+                      const botColor =
+                        COLOR_PALETTE.find((c) => c.hex !== human)?.hex ??
+                        defaultColorForSeat(1)
+                      colors[2] = botColor
+                    } else {
+                      colors[i as PlayerId] = localColors[i]!
+                    }
                   }
-                  onStartLocal(playersCount, colors)
+                  onStartLocal({
+                    playersCount: count,
+                    colors,
+                    opponent: localOpponent,
+                    botDifficulty:
+                      localOpponent === 'bot' ? botDifficulty : undefined,
+                  })
                 } else {
                   onCreateOnline(playersCount)
                 }

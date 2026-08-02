@@ -72,7 +72,7 @@ export class RoomManager {
     }
   }
 
-  scheduleBots(code: string, delayMs = 900): void {
+  scheduleBots(code: string, delayMs = 450): void {
     const normalized = normalizeCode(code)
     this.clearBotTimer(normalized)
     this.botTimers.set(
@@ -336,7 +336,7 @@ export class RoomManager {
       initiative: room.initiative,
     }
 
-    this.scheduleBots(room.code, 700)
+    this.scheduleBots(room.code, 400)
     return { ok: true }
   }
 
@@ -415,7 +415,7 @@ export class RoomManager {
         if (!current || current.status !== 'countdown') return
         this.beginPlaying(current, resolved.playerId)
         this.onCountdownFinished?.(current.code)
-        this.scheduleBots(current.code, 800)
+        this.scheduleBots(current.code, 450)
       }, INITIATIVE_COUNTDOWN_MS),
     )
 
@@ -629,7 +629,7 @@ export class RoomManager {
 
       if (!allContendersRolled(room.initiative)) {
         this.onBotUpdate?.(room.code, dice)
-        this.scheduleBots(room.code, 750)
+        this.scheduleBots(room.code, 400)
         return
       }
 
@@ -644,7 +644,7 @@ export class RoomManager {
           }
         }
         this.onBotUpdate?.(room.code, dice)
-        this.scheduleBots(room.code, 750)
+        this.scheduleBots(room.code, 400)
         return
       }
 
@@ -674,7 +674,7 @@ export class RoomManager {
           if (!current || current.status !== 'countdown') return
           this.beginPlaying(current, resolved.playerId)
           this.onCountdownFinished?.(current.code)
-          this.scheduleBots(current.code, 800)
+          this.scheduleBots(current.code, 450)
         }, INITIATIVE_COUNTDOWN_MS),
       )
 
@@ -693,7 +693,7 @@ export class RoomManager {
       const next = gameReducer(room.game, { type: 'ROLL_DICE', dice })
       room.game = next
       this.onBotUpdate?.(room.code, dice)
-      this.scheduleBots(room.code, 1600)
+      this.scheduleBots(room.code, 700)
       return
     }
 
@@ -716,7 +716,7 @@ export class RoomManager {
       }
       this.onBotUpdate?.(room.code)
       if (next.phase !== 'gameOver') {
-        this.scheduleBots(room.code, 1800)
+        this.scheduleBots(room.code, 800)
       }
       return
     }
@@ -725,7 +725,7 @@ export class RoomManager {
       const next = gameReducer(room.game, { type: 'COMPLETE_SKIP' })
       room.game = next
       this.onBotUpdate?.(room.code)
-      this.scheduleBots(room.code, 1200)
+      this.scheduleBots(room.code, 550)
     }
   }
 

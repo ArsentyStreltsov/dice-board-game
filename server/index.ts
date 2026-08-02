@@ -175,7 +175,7 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastRoom(payload.code)
-      rooms.scheduleBots(payload.code, 700)
+      rooms.scheduleBots(payload.code, 400)
     }
   })
 
@@ -210,7 +210,7 @@ io.on('connection', (socket) => {
           dice: result.dice,
         })
       }
-      rooms.scheduleBots(payload.code, 700)
+      rooms.scheduleBots(payload.code, 400)
     }
   })
 
@@ -247,7 +247,7 @@ io.on('connection', (socket) => {
     callback(result.ok ? { ok: true } : { ok: false, error: result.error })
     if (result.ok) {
       broadcastGame(payload.code, result.dice)
-      rooms.scheduleBots(payload.code, 1600)
+      rooms.scheduleBots(payload.code, 700)
     }
   })
 
@@ -256,7 +256,7 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastGame(payload.code)
-      rooms.scheduleBots(payload.code, 1800)
+      rooms.scheduleBots(payload.code, 800)
     }
   })
 
@@ -265,7 +265,7 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastGame(payload.code)
-      rooms.scheduleBots(payload.code, 1200)
+      rooms.scheduleBots(payload.code, 550)
     }
   })
 

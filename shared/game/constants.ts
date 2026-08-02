@@ -4,15 +4,15 @@ export const BOARD_SIZE = 6
 export const WIN_LENGTH = 3
 export const MAX_LOG_ENTRIES = 10
 /** Анимация вращения кубиков */
-export const DICE_ANIMATION_MS = 1100
+export const DICE_ANIMATION_MS = 700
 /** Пауза после выпадения кубиков, чтобы успеть увидеть результат */
-export const POST_ROLL_PAUSE_MS = 1600
+export const POST_ROLL_PAUSE_MS = 450
 /** Пауза после хода (постановка/удаление), чтобы увидеть изменение на поле */
-export const POST_ACTION_PAUSE_MS = 2000
+export const POST_ACTION_PAUSE_MS = 650
 /** Пауза после определения первого игрока перед стартом партии */
 export const INITIATIVE_COUNTDOWN_MS = 5000
 /** Задержка «размышления» бота перед действием */
-export const BOT_THINK_MS = 900
+export const BOT_THINK_MS = 400
 
 export type ColorOption = {
   id: string

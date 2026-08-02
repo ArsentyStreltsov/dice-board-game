@@ -1,26 +1,48 @@
-import { useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { nextInitiativeRoller } from '@shared/game/initiative.ts'
 import type { PlayerId } from '@shared/game/types.ts'
 import { Board } from './components/Board'
-import { DevPanel } from './components/DevPanel'
 import { Dice } from './components/Dice'
 import { GameOverModal } from './components/GameOverModal'
 import { GameStatus } from './components/GameStatus'
 import { InitiativeScreen } from './components/InitiativeScreen'
 import { LobbyScreen } from './components/LobbyScreen'
+import { NameGate } from './components/NameGate'
 import { PlayerList } from './components/PlayerList'
 import { StartScreen, type LocalStartConfig } from './components/StartScreen'
 import { useGame } from './hooks/useGame'
 import { useOnlineGame } from './hooks/useOnlineGame'
+import {
+  loadPlayerName,
+  loadSoundEnabled,
+  savePlayerName,
+  saveSoundEnabled,
+} from './lib/playerProfile.ts'
+import { playClick, setSoundEnabled, unlockAudio } from './lib/sounds.ts'
 import './styles/global.css'
 
 type PlayMode = 'menu' | 'local' | 'online'
 
 function App() {
+  const [playerName, setPlayerName] = useState(() => loadPlayerName())
+  const [naming, setNaming] = useState(() => loadPlayerName().length < 2)
+  const [soundOn, setSoundOn] = useState(() => loadSoundEnabled())
   const [playMode, setPlayMode] = useState<PlayMode>('menu')
   const local = useGame()
   const online = useOnlineGame()
-  const [devOpen, setDevOpen] = useState(false)
+
+  useEffect(() => {
+    setSoundEnabled(soundOn)
+    saveSoundEnabled(soundOn)
+  }, [soundOn])
+
+  useEffect(() => {
+    const unlock = () => {
+      void unlockAudio()
+    }
+    window.addEventListener('pointerdown', unlock, { once: true })
+    return () => window.removeEventListener('pointerdown', unlock)
+  }, [])
 
   const inOnlineSession =
     online.status === 'lobby' ||
@@ -36,6 +58,36 @@ function App() {
         ? 'online'
         : 'menu'
 
+  if (naming) {
+    return (
+      <NameGate
+        initialName={playerName}
+        onConfirm={(name) => {
+          void unlockAudio()
+          playClick()
+          savePlayerName(name)
+          setPlayerName(name)
+          setNaming(false)
+        }}
+      />
+    )
+  }
+
+  const soundToggle = (
+    <button
+      type="button"
+      className="btn btn--ghost btn--icon"
+      aria-label={soundOn ? 'Выключить звук' : 'Включить звук'}
+      title={soundOn ? 'Звук вкл.' : 'Звук выкл.'}
+      onClick={() => {
+        void unlockAudio()
+        setSoundOn((v) => !v)
+      }}
+    >
+      {soundOn ? '♪' : '✕♪'}
+    </button>
+  )
+
   if (
     effectiveMode === 'menu' ||
     (effectiveMode === 'online' &&
@@ -45,24 +97,36 @@ function App() {
       !inOnlineSession)
   ) {
     return (
-      <StartScreen
-        onStartLocal={(config: LocalStartConfig) => {
-          setPlayMode('local')
-          local.startGame(config.playersCount, config.colors, {
-            botDifficulty: config.botDifficulty,
-          })
-        }}
-        onCreateOnline={(count) => {
-          setPlayMode('online')
-          online.createRoom(count)
-        }}
-        onJoinOnline={(code) => {
-          setPlayMode('online')
-          online.joinRoom(code)
-        }}
-        onlineError={online.error}
-        onlineBusy={online.status === 'connecting'}
-      />
+      <>
+        <div className="app-chrome">{soundToggle}</div>
+        <StartScreen
+          playerName={playerName}
+          onChangeName={() => setNaming(true)}
+          onStartLocal={(config: LocalStartConfig) => {
+            void unlockAudio()
+            playClick()
+            setPlayMode('local')
+            local.startGame(config.playersCount, config.colors, {
+              botDifficulty: config.botDifficulty,
+              names: { 1: config.playerName },
+            })
+          }}
+          onCreateOnline={(count) => {
+            void unlockAudio()
+            playClick()
+            setPlayMode('online')
+            online.createRoom(count, playerName)
+          }}
+          onJoinOnline={(code) => {
+            void unlockAudio()
+            playClick()
+            setPlayMode('online')
+            online.joinRoom(code, playerName)
+          }}
+          onlineError={online.error}
+          onlineBusy={online.status === 'connecting'}
+        />
+      </>
     )
   }
 
@@ -78,12 +142,22 @@ function App() {
         playerId={online.playerId}
         isHost={online.isHost}
         error={online.error}
-        onStart={online.startGame}
+        onStart={() => {
+          void unlockAudio()
+          playClick()
+          online.startGame()
+        }}
         onSetColor={online.setColor}
+        onSetName={(name) => {
+          savePlayerName(name)
+          setPlayerName(name)
+          online.setName(name)
+        }}
         onLeave={() => {
           online.leaveRoom()
           setPlayMode('menu')
         }}
+        soundToggle={soundToggle}
       />
     )
   }
@@ -98,16 +172,20 @@ function App() {
       <InitiativeScreen
         players={online.game.players}
         initiative={online.room.initiative}
-        myPlayerId={online.playerId}
         canRoll={online.canRollInitiative && online.status === 'initiative'}
         isRolling={online.isRolling}
         shownDice={online.shownDice}
-        onRoll={online.rollInitiative}
+        onRoll={() => {
+          void unlockAudio()
+          playClick()
+          online.rollInitiative()
+        }}
         onLeave={() => {
           online.leaveRoom()
           setPlayMode('menu')
         }}
         modeLabel={`Онлайн · ${online.room.code}`}
+        headerExtra={soundToggle}
       />
     )
   }
@@ -122,21 +200,26 @@ function App() {
       <InitiativeScreen
         players={local.state.players}
         initiative={local.state.initiative}
-        myPlayerId={roller}
         canRoll={
           local.state.phase === 'initiative' &&
           roller !== null &&
           !local.isRolling &&
-          !(local.botConfig && roller === local.botConfig.playerId)
+          !local.paceLocked &&
+          !(local.botConfig && local.botConfig.botIds.includes(roller))
         }
         isRolling={local.isRolling}
         shownDice={local.shownDice}
-        onRoll={local.rollInitiative}
+        onRoll={() => {
+          void unlockAudio()
+          playClick()
+          local.rollInitiative()
+        }}
         onLeave={() => {
           local.newGame()
           setPlayMode('menu')
         }}
         modeLabel="Локальная игра"
+        headerExtra={soundToggle}
       />
     )
   }
@@ -145,8 +228,7 @@ function App() {
     return (
       <LocalGameView
         local={local}
-        devOpen={devOpen}
-        setDevOpen={setDevOpen}
+        soundToggle={soundToggle}
         onExit={() => {
           local.newGame()
           setPlayMode('menu')
@@ -164,6 +246,7 @@ function App() {
     return (
       <OnlineGameView
         online={online}
+        soundToggle={soundToggle}
         onExitToMenu={() => {
           online.leaveRoom()
           setPlayMode('menu')
@@ -173,44 +256,58 @@ function App() {
   }
 
   return (
-    <StartScreen
-      onStartLocal={(config: LocalStartConfig) => {
-        setPlayMode('local')
-        local.startGame(config.playersCount, config.colors, {
-          botDifficulty: config.botDifficulty,
-        })
-      }}
-      onCreateOnline={(count) => {
-        setPlayMode('online')
-        online.createRoom(count)
-      }}
-      onJoinOnline={(code) => {
-        setPlayMode('online')
-        online.joinRoom(code)
-      }}
-      onlineError={online.error ?? 'Подключение…'}
-      onlineBusy
-    />
+    <>
+      <div className="app-chrome">{soundToggle}</div>
+      <StartScreen
+        playerName={playerName}
+        onChangeName={() => setNaming(true)}
+        onStartLocal={(config: LocalStartConfig) => {
+          void unlockAudio()
+          playClick()
+          setPlayMode('local')
+          local.startGame(config.playersCount, config.colors, {
+            botDifficulty: config.botDifficulty,
+            names: { 1: config.playerName },
+          })
+        }}
+        onCreateOnline={(count) => {
+          void unlockAudio()
+          playClick()
+          setPlayMode('online')
+          online.createRoom(count, playerName)
+        }}
+        onJoinOnline={(code) => {
+          void unlockAudio()
+          playClick()
+          setPlayMode('online')
+          online.joinRoom(code, playerName)
+        }}
+        onlineError={online.error ?? 'Подключение…'}
+        onlineBusy
+      />
+    </>
   )
 }
 
 type LocalGameViewProps = {
   local: ReturnType<typeof useGame>
-  devOpen: boolean
-  setDevOpen: (value: boolean | ((prev: boolean) => boolean)) => void
+  soundToggle: ReactNode
   onExit: () => void
 }
 
-function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProps) {
-  const { state, isRolling, shownDice, isBotTurn, botConfig } = local
+function LocalGameView({ local, soundToggle, onExit }: LocalGameViewProps) {
+  const { state, isRolling, shownDice, isBotTurn, botConfig, paceLocked, lastMove } =
+    local
   const currentPlayer = state.players.find((p) => p.id === state.currentPlayerId)
   const winner = state.winner
     ? state.players.find((p) => p.id === state.winner)
     : undefined
   const canRoll =
-    state.phase === 'waitingForRoll' && !isRolling && !isBotTurn
+    state.phase === 'waitingForRoll' && !isRolling && !isBotTurn && !paceLocked
   const canSelect =
-    state.phase === 'selectingCell' && !isRolling && !isBotTurn
+    state.phase === 'selectingCell' && !isRolling && !isBotTurn && !paceLocked
+  const showTargets =
+    state.phase === 'selectingCell' && !isRolling && !(paceLocked && !lastMove)
 
   return (
     <div className="app">
@@ -230,9 +327,12 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
           </p>
           <h1 className="app__title">Игровое поле</h1>
         </div>
-        <button type="button" className="btn btn--ghost" onClick={onExit}>
-          Новая игра
-        </button>
+        <div className="app__header-actions">
+          {soundToggle}
+          <button type="button" className="btn btn--ghost" onClick={onExit}>
+            Новая игра
+          </button>
+        </div>
       </header>
 
       <main className="app__layout">
@@ -242,38 +342,22 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             players={state.players}
             currentPlayerId={state.currentPlayerId}
           />
-          <DevPanel
-            open={devOpen}
-            onToggle={() => setDevOpen((v) => !v)}
-            players={state.players}
-            canAct={!isRolling && state.phase !== 'initiative'}
-            canRoll={canRoll || state.phase === 'initiative'}
-            onRollWithValues={local.rollWithValues}
-            onClearBoard={local.devClearBoard}
-            onNextPlayer={local.devNextPlayer}
-            onSetCell={local.devSetCell}
-          />
         </section>
 
         <section className="panel panel--board">
           <div className="board-toolbar">
-            <GameStatus
-              phase={state.phase}
-              currentPlayer={currentPlayer}
-              dice={state.dice}
-              availableActions={state.availableActions}
-              isRolling={isRolling}
-            />
-            {isBotTurn && state.phase !== 'gameOver' ? (
-              <p className="app__turn-hint">Компьютер думает…</p>
-            ) : null}
+            <GameStatus currentPlayer={currentPlayer} />
             <Dice dice={shownDice} isRolling={isRolling} />
             {state.phase === 'turnSkipped' ? (
               <button
                 type="button"
                 className="btn btn--primary"
-                disabled={isBotTurn}
-                onClick={local.completeSkip}
+                disabled={isBotTurn || paceLocked}
+                onClick={() => {
+                  void unlockAudio()
+                  playClick()
+                  local.completeSkip()
+                }}
               >
                 Завершить ход
               </button>
@@ -282,7 +366,11 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
                 type="button"
                 className="btn btn--primary"
                 disabled={!canRoll}
-                onClick={local.roll}
+                onClick={() => {
+                  void unlockAudio()
+                  playClick()
+                  local.roll()
+                }}
               >
                 Бросить кубики
               </button>
@@ -294,9 +382,10 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             players={state.players}
             availableActions={state.availableActions}
             winningCells={state.winningCells}
-            showTargets={state.phase === 'selectingCell' && !isRolling}
+            showTargets={showTargets}
             interactive={canSelect}
             accentColor={currentPlayer?.color}
+            lastMove={lastMove?.coordinate ?? null}
             onSelect={local.selectCell}
           />
         </section>
@@ -309,8 +398,12 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
             const colors = Object.fromEntries(
               state.players.map((p) => [p.id, p.color]),
             ) as Partial<Record<PlayerId, string>>
+            const names = Object.fromEntries(
+              state.players.map((p) => [p.id, p.name]),
+            ) as Partial<Record<PlayerId, string>>
             local.startGame(state.playersCount, colors, {
               botDifficulty: botConfig?.difficulty,
+              names,
             })
           }}
           onExitToMenu={onExit}
@@ -322,22 +415,39 @@ function LocalGameView({ local, devOpen, setDevOpen, onExit }: LocalGameViewProp
 
 type OnlineGameViewProps = {
   online: ReturnType<typeof useOnlineGame>
+  soundToggle: ReactNode
   onExitToMenu: () => void
 }
 
-function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
+function OnlineGameView({ online, soundToggle, onExitToMenu }: OnlineGameViewProps) {
   const game = online.game!
   const currentPlayer = game.players.find((p) => p.id === game.currentPlayerId)
   const winner = game.winner
     ? game.players.find((p) => p.id === game.winner)
     : undefined
+  const myName =
+    game.players.find((p) => p.id === online.playerId)?.name ??
+    (online.playerId ? `Игрок ${online.playerId}` : '')
 
   const canRoll =
-    online.isMyTurn && game.phase === 'waitingForRoll' && !online.isRolling
+    online.isMyTurn &&
+    game.phase === 'waitingForRoll' &&
+    !online.isRolling &&
+    !online.paceLocked
   const canSelect =
-    online.isMyTurn && game.phase === 'selectingCell' && !online.isRolling
+    online.isMyTurn &&
+    game.phase === 'selectingCell' &&
+    !online.isRolling &&
+    !online.paceLocked
   const canSkip =
-    online.isMyTurn && game.phase === 'turnSkipped' && !online.isRolling
+    online.isMyTurn &&
+    game.phase === 'turnSkipped' &&
+    !online.isRolling &&
+    !online.paceLocked
+  const showTargets =
+    game.phase === 'selectingCell' &&
+    !online.isRolling &&
+    !(online.paceLocked && !online.lastMove)
 
   return (
     <div className="app">
@@ -345,11 +455,12 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
         <div>
           <p className="app__eyebrow">
             Dice Grid · онлайн · код {online.room?.code}
-            {online.playerId ? ` · вы: Игрок ${online.playerId}` : ''}
+            {myName ? ` · вы: ${myName}` : ''}
           </p>
           <h1 className="app__title">Игровое поле</h1>
         </div>
         <div className="app__header-actions">
+          {soundToggle}
           {online.isHost ? (
             <button
               type="button"
@@ -382,16 +493,12 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
 
         <section className="panel panel--board">
           <div className="board-toolbar">
-            <GameStatus
-              phase={game.phase}
-              currentPlayer={currentPlayer}
-              dice={game.dice}
-              availableActions={game.availableActions}
-              isRolling={online.isRolling}
-            />
+            <GameStatus currentPlayer={currentPlayer} />
 
             {!online.isMyTurn && game.phase !== 'gameOver' ? (
-              <p className="app__turn-hint">Сейчас ход другого игрока.</p>
+              <p className="app__turn-hint">
+                Сейчас ходит {currentPlayer?.name ?? 'другой игрок'}.
+              </p>
             ) : null}
 
             <Dice dice={online.shownDice} isRolling={online.isRolling} />
@@ -401,7 +508,11 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
                 type="button"
                 className="btn btn--primary"
                 disabled={!canSkip}
-                onClick={online.completeSkip}
+                onClick={() => {
+                  void unlockAudio()
+                  playClick()
+                  online.completeSkip()
+                }}
               >
                 Завершить ход
               </button>
@@ -410,7 +521,11 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
                 type="button"
                 className="btn btn--primary"
                 disabled={!canRoll}
-                onClick={online.roll}
+                onClick={() => {
+                  void unlockAudio()
+                  playClick()
+                  online.roll()
+                }}
               >
                 Бросить кубики
               </button>
@@ -422,9 +537,10 @@ function OnlineGameView({ online, onExitToMenu }: OnlineGameViewProps) {
             players={game.players}
             availableActions={game.availableActions}
             winningCells={game.winningCells}
-            showTargets={game.phase === 'selectingCell' && !online.isRolling}
+            showTargets={showTargets}
             interactive={canSelect}
             accentColor={currentPlayer?.color}
+            lastMove={online.lastMove?.coordinate ?? null}
             onSelect={online.selectCell}
           />
         </section>

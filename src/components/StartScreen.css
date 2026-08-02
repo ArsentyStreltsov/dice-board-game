@@ -38,6 +38,19 @@
   line-height: 1.5;
 }
 
+.start-screen__hello {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.95rem;
+}
+
 .start-screen__players {
   border: none;
   margin: 0.5rem 0 0;

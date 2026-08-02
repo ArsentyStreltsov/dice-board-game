@@ -13,9 +13,12 @@ export type LocalStartConfig = {
   colors: Partial<Record<PlayerId, string>>
   opponent: 'friends' | 'bot'
   botDifficulty?: BotDifficulty
+  playerName: string
 }
 
 type StartScreenProps = {
+  playerName: string
+  onChangeName: () => void
   onStartLocal: (config: LocalStartConfig) => void
   onCreateOnline: (playersCount: 2 | 3 | 4) => void
   onJoinOnline: (code: string) => void
@@ -26,6 +29,8 @@ type StartScreenProps = {
 type Mode = 'choose' | 'local' | 'online-create' | 'online-join'
 
 export function StartScreen({
+  playerName,
+  onChangeName,
   onStartLocal,
   onCreateOnline,
   onJoinOnline,
@@ -60,6 +65,15 @@ export function StartScreen({
           Бросайте два кубика, выбирайте одну из двух координат и соберите три
           свои фишки подряд.
         </p>
+
+        <div className="start-screen__hello">
+          <span>
+            Привет, <strong>{playerName}</strong>
+          </span>
+          <button type="button" className="btn btn--ghost" onClick={onChangeName}>
+            Сменить имя
+          </button>
+        </div>
 
         {mode === 'choose' ? (
           <div className="start-screen__mode-grid">
@@ -107,10 +121,7 @@ export function StartScreen({
                       type="radio"
                       name="opponent"
                       checked={localOpponent === 'bot'}
-                      onChange={() => {
-                        setLocalOpponent('bot')
-                        setPlayersCount(2)
-                      }}
+                      onChange={() => setLocalOpponent('bot')}
                     />
                     <span>С компьютером</span>
                   </label>
@@ -118,9 +129,31 @@ export function StartScreen({
               </fieldset>
             ) : null}
 
+            <fieldset className="start-screen__players">
+              <legend>
+                {mode === 'local' && localOpponent === 'bot'
+                  ? 'Игроков за столом'
+                  : 'Количество игроков'}
+              </legend>
+              <div className="start-screen__options">
+                {([2, 3, 4] as const).map((count) => (
+                  <label key={count} className="start-screen__option">
+                    <input
+                      type="radio"
+                      name="players"
+                      value={count}
+                      checked={playersCount === count}
+                      onChange={() => setPlayersCount(count)}
+                    />
+                    <span>{count}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
             {mode === 'local' && localOpponent === 'bot' ? (
               <fieldset className="start-screen__players">
-                <legend>Сложность бота</legend>
+                <legend>Сложность ботов</legend>
                 <div className="start-screen__options">
                   {(
                     [
@@ -141,25 +174,7 @@ export function StartScreen({
                   ))}
                 </div>
               </fieldset>
-            ) : (
-              <fieldset className="start-screen__players">
-                <legend>Количество игроков</legend>
-                <div className="start-screen__options">
-                  {([2, 3, 4] as const).map((count) => (
-                    <label key={count} className="start-screen__option">
-                      <input
-                        type="radio"
-                        name="players"
-                        value={count}
-                        checked={playersCount === count}
-                        onChange={() => setPlayersCount(count)}
-                      />
-                      <span>{count}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )}
+            ) : null}
 
             {mode === 'local' ? (
               <div className="start-screen__colors">
@@ -183,14 +198,21 @@ export function StartScreen({
                 })}
                 {localOpponent === 'bot' ? (
                   <p className="start-screen__hint">
-                    Компьютер получит другой свободный цвет автоматически.
+                    Вы играете против {playersCount - 1} компьютер
+                    {playersCount - 1 === 1 ? 'а' : 'ов'}. Цвета ботов
+                    назначатся автоматически.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="start-screen__hint">
+                    Вы — {playerName} (игрок 1). Остальные ходят с этого же
+                    устройства по очереди.
+                  </p>
+                )}
               </div>
             ) : (
               <p className="start-screen__hint">
-                Цвет можно выбрать в лобби комнаты. Доступно {COLOR_PALETTE.length}{' '}
-                цветов.
+                Вы войдёте как {playerName}. Цвет можно выбрать в лобби. Доступно{' '}
+                {COLOR_PALETTE.length} цветов.
               </p>
             )}
 
@@ -200,26 +222,30 @@ export function StartScreen({
               disabled={onlineBusy}
               onClick={() => {
                 if (mode === 'local') {
-                  const count: 2 | 3 | 4 =
-                    localOpponent === 'bot' ? 2 : playersCount
                   const colors: Partial<Record<PlayerId, string>> = {}
-                  for (let i = 1; i <= count; i++) {
-                    if (localOpponent === 'bot' && i === 2) {
-                      const human = localColors[1]!
+                  const taken = new Set<string>()
+                  colors[1] = localColors[1]!
+                  taken.add(localColors[1]!)
+
+                  for (let i = 2; i <= playersCount; i++) {
+                    if (localOpponent === 'bot') {
                       const botColor =
-                        COLOR_PALETTE.find((c) => c.hex !== human)?.hex ??
-                        defaultColorForSeat(1)
-                      colors[2] = botColor
+                        COLOR_PALETTE.find((c) => !taken.has(c.hex))?.hex ??
+                        defaultColorForSeat(i - 1)
+                      colors[i as PlayerId] = botColor
+                      taken.add(botColor)
                     } else {
                       colors[i as PlayerId] = localColors[i]!
                     }
                   }
+
                   onStartLocal({
-                    playersCount: count,
+                    playersCount,
                     colors,
                     opponent: localOpponent,
                     botDifficulty:
                       localOpponent === 'bot' ? botDifficulty : undefined,
+                    playerName,
                   })
                 } else {
                   onCreateOnline(playersCount)
@@ -240,6 +266,9 @@ export function StartScreen({
 
         {mode === 'online-join' ? (
           <>
+            <p className="start-screen__hint">
+              Вы войдёте как <strong>{playerName}</strong>.
+            </p>
             <label className="start-screen__join">
               Код комнаты
               <input

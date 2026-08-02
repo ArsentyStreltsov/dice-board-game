@@ -88,6 +88,18 @@ select {
   background: #f8fafc;
 }
 
+.app-chrome {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 40;
+}
+
+.btn--icon {
+  min-width: 2.5rem;
+  padding-inline: 0.55rem;
+}
+
 .app {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;

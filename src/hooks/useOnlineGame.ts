@@ -1,11 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { DICE_ANIMATION_MS } from '@shared/game/constants.ts'
+import {
+  DICE_ANIMATION_MS,
+  POST_ACTION_PAUSE_MS,
+  POST_ROLL_PAUSE_MS,
+} from '@shared/game/constants.ts'
 import type {
+  Board,
   Coordinate,
   DiceResult,
   PlayerId,
   RoomPublic,
 } from '@shared/game/types.ts'
+import type { MoveFlash } from '../components/MoveBanner.tsx'
+import { sanitizePlayerName } from '../lib/playerProfile.ts'
+import {
+  playDiceLand,
+  playDiceRoll,
+  playPlace,
+  playRemove,
+  playSkip,
+  playWin,
+} from '../lib/sounds.ts'
 import { disconnectSocket, getSocket } from '../net/socket.ts'
 
 const SESSION_KEY = 'dice-grid-online-session'
@@ -45,6 +60,25 @@ function saveSession(session: Session | null): void {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
+function findBoardDiff(
+  prev: Board | null,
+  next: Board,
+): { coordinate: Coordinate; kind: 'place' | 'remove' } | null {
+  if (!prev) return null
+  for (let r = 0; r < next.length; r++) {
+    for (let c = 0; c < next[r]!.length; c++) {
+      const before = prev[r]![c]
+      const after = next[r]![c]
+      if (before === after) continue
+      return {
+        coordinate: { row: r + 1, column: c + 1 },
+        kind: after === null ? 'remove' : 'place',
+      }
+    }
+  }
+  return null
+}
+
 export function useOnlineGame() {
   const [status, setStatus] = useState<OnlineStatus>('idle')
   const [room, setRoom] = useState<RoomPublic | null>(null)
@@ -53,51 +87,126 @@ export function useOnlineGame() {
   const [error, setError] = useState<string | null>(null)
   const [isRolling, setIsRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<DiceResult | null>(null)
+  const [paceLocked, setPaceLocked] = useState(false)
+  const [lastMove, setLastMove] = useState<MoveFlash>(null)
   const rollingRef = useRef(false)
+  const paceUntilRef = useRef(0)
+  const paceTimerRef = useRef<number | null>(null)
+  const prevBoardRef = useRef<Board | null>(null)
+  const prevPhaseRef = useRef<string | null>(null)
 
-  const applyRoom = useCallback((next: RoomPublic, session?: Partial<Session>) => {
-    setRoom(next)
-    if (session?.playerId) setPlayerId(session.playerId)
-    if (typeof session?.isHost === 'boolean') setIsHost(session.isHost)
-
-    if (next.status === 'lobby') {
-      setStatus('lobby')
-      setDisplayDice(null)
-      setIsRolling(false)
-      rollingRef.current = false
-    } else if (next.status === 'initiative') {
-      setStatus('initiative')
-    } else if (next.status === 'countdown') {
-      setStatus('countdown')
-      setIsRolling(false)
-      rollingRef.current = false
-    } else if (next.status === 'playing') {
-      setStatus('playing')
-      setDisplayDice(null)
-      setIsRolling(false)
-      rollingRef.current = false
-    } else if (next.status === 'finished') {
-      setStatus('finished')
+  const clearPaceTimer = useCallback(() => {
+    if (paceTimerRef.current !== null) {
+      window.clearTimeout(paceTimerRef.current)
+      paceTimerRef.current = null
     }
   }, [])
 
-  const animateIncomingDice = useCallback((dice: DiceResult) => {
-    rollingRef.current = true
-    setIsRolling(true)
-    const interval = window.setInterval(() => {
-      setDisplayDice({
-        first: Math.floor(Math.random() * 6) + 1,
-        second: Math.floor(Math.random() * 6) + 1,
-      })
-    }, 50)
+  const lockPace = useCallback(
+    (ms: number) => {
+      clearPaceTimer()
+      const until = Date.now() + ms
+      paceUntilRef.current = until
+      setPaceLocked(true)
+      paceTimerRef.current = window.setTimeout(() => {
+        paceTimerRef.current = null
+        if (Date.now() >= paceUntilRef.current) {
+          setPaceLocked(false)
+        }
+      }, ms)
+    },
+    [clearPaceTimer],
+  )
 
-    window.setTimeout(() => {
-      window.clearInterval(interval)
-      setDisplayDice(dice)
-      setIsRolling(false)
-      rollingRef.current = false
-    }, DICE_ANIMATION_MS)
-  }, [])
+  const applyRoom = useCallback(
+    (next: RoomPublic, session?: Partial<Session>) => {
+      setRoom(next)
+      if (session?.playerId) setPlayerId(session.playerId)
+      if (typeof session?.isHost === 'boolean') setIsHost(session.isHost)
+
+      if (next.status === 'lobby') {
+        setStatus('lobby')
+        setDisplayDice(null)
+        setIsRolling(false)
+        rollingRef.current = false
+        setLastMove(null)
+        prevBoardRef.current = null
+      } else if (next.status === 'initiative') {
+        setStatus('initiative')
+      } else if (next.status === 'countdown') {
+        setStatus('countdown')
+        setIsRolling(false)
+        rollingRef.current = false
+      } else if (next.status === 'playing') {
+        setStatus('playing')
+      } else if (next.status === 'finished') {
+        setStatus('finished')
+      }
+
+      const game = next.game
+      if (game) {
+        const prevBoard = prevBoardRef.current
+        const prevPhase = prevPhaseRef.current
+        const diff = findBoardDiff(prevBoard, game.board)
+        if (diff && game.players.length > 0) {
+          const actorId =
+            diff.kind === 'place'
+              ? game.board[diff.coordinate.row - 1]![diff.coordinate.column - 1]
+              : prevBoard?.[diff.coordinate.row - 1]?.[
+                  diff.coordinate.column - 1
+                ] ?? null
+          const actor = game.players.find((p) => p.id === actorId)
+          if (actor) {
+            setLastMove({
+              player: actor,
+              coordinate: diff.coordinate,
+              kind: diff.kind,
+            })
+            if (diff.kind === 'place') playPlace()
+            else playRemove()
+            if (game.phase === 'gameOver') playWin()
+            else lockPace(POST_ACTION_PAUSE_MS)
+          }
+        } else if (
+          prevPhase === 'turnSkipped' &&
+          game.phase === 'waitingForRoll'
+        ) {
+          playSkip()
+          setLastMove(null)
+          lockPace(POST_ACTION_PAUSE_MS)
+        }
+
+        prevBoardRef.current = game.board.map((row) => [...row])
+        prevPhaseRef.current = game.phase
+      }
+    },
+    [lockPace],
+  )
+
+  const animateIncomingDice = useCallback(
+    (dice: DiceResult) => {
+      rollingRef.current = true
+      setIsRolling(true)
+      setLastMove(null)
+      playDiceRoll()
+      const interval = window.setInterval(() => {
+        setDisplayDice({
+          first: Math.floor(Math.random() * 6) + 1,
+          second: Math.floor(Math.random() * 6) + 1,
+        })
+      }, 55)
+
+      window.setTimeout(() => {
+        window.clearInterval(interval)
+        setDisplayDice(dice)
+        setIsRolling(false)
+        rollingRef.current = false
+        playDiceLand()
+        lockPace(POST_ROLL_PAUSE_MS)
+      }, DICE_ANIMATION_MS)
+    },
+    [lockPace],
+  )
 
   useEffect(() => {
     const socket = getSocket()
@@ -112,7 +221,11 @@ export function useOnlineGame() {
     }) => {
       applyRoom(payload.room)
       if (payload.room.status === 'playing' || payload.room.status === 'countdown') {
-        setDisplayDice(null)
+        if (payload.dice) {
+          animateIncomingDice(payload.dice)
+        } else if (payload.room.game?.phase === 'waitingForRoll') {
+          setDisplayDice(null)
+        }
         return
       }
       if (payload.dice) {
@@ -161,55 +274,69 @@ export function useOnlineGame() {
     }
   }, [applyRoom, animateIncomingDice])
 
-  const createRoom = useCallback((playersCount: 2 | 3 | 4) => {
-    setError(null)
-    setStatus('connecting')
-    const socket = getSocket()
-    socket.emit('room:create', { playersCount }, (response) => {
-      if (!response.ok) {
-        setStatus('error')
-        setError(response.error)
-        return
-      }
-      saveSession({
-        code: response.room.code,
-        token: response.token,
-        playerId: response.playerId,
-        isHost: response.isHost,
-      })
-      setPlayerId(response.playerId)
-      setIsHost(response.isHost)
-      applyRoom(response.room, {
-        playerId: response.playerId,
-        isHost: response.isHost,
-      })
-    })
-  }, [applyRoom])
+  const createRoom = useCallback(
+    (playersCount: 2 | 3 | 4, name: string) => {
+      setError(null)
+      setStatus('connecting')
+      const socket = getSocket()
+      socket.emit(
+        'room:create',
+        { playersCount, name: sanitizePlayerName(name) },
+        (response) => {
+          if (!response.ok) {
+            setStatus('error')
+            setError(response.error)
+            return
+          }
+          saveSession({
+            code: response.room.code,
+            token: response.token,
+            playerId: response.playerId,
+            isHost: response.isHost,
+          })
+          setPlayerId(response.playerId)
+          setIsHost(response.isHost)
+          applyRoom(response.room, {
+            playerId: response.playerId,
+            isHost: response.isHost,
+          })
+        },
+      )
+    },
+    [applyRoom],
+  )
 
-  const joinRoom = useCallback((code: string) => {
-    setError(null)
-    setStatus('connecting')
-    const socket = getSocket()
-    socket.emit('room:join', { code }, (response) => {
-      if (!response.ok) {
-        setStatus('error')
-        setError(response.error)
-        return
-      }
-      saveSession({
-        code: response.room.code,
-        token: response.token,
-        playerId: response.playerId,
-        isHost: response.isHost,
-      })
-      setPlayerId(response.playerId)
-      setIsHost(response.isHost)
-      applyRoom(response.room, {
-        playerId: response.playerId,
-        isHost: response.isHost,
-      })
-    })
-  }, [applyRoom])
+  const joinRoom = useCallback(
+    (code: string, name: string) => {
+      setError(null)
+      setStatus('connecting')
+      const socket = getSocket()
+      socket.emit(
+        'room:join',
+        { code, name: sanitizePlayerName(name) },
+        (response) => {
+          if (!response.ok) {
+            setStatus('error')
+            setError(response.error)
+            return
+          }
+          saveSession({
+            code: response.room.code,
+            token: response.token,
+            playerId: response.playerId,
+            isHost: response.isHost,
+          })
+          setPlayerId(response.playerId)
+          setIsHost(response.isHost)
+          applyRoom(response.room, {
+            playerId: response.playerId,
+            isHost: response.isHost,
+          })
+        },
+      )
+    },
+    [applyRoom],
+  )
 
   const startGame = useCallback(() => {
     if (!room) return
@@ -232,8 +359,23 @@ export function useOnlineGame() {
     [room],
   )
 
+  const setName = useCallback(
+    (name: string) => {
+      if (!room) return
+      getSocket().emit(
+        'room:setName',
+        { code: room.code, name: sanitizePlayerName(name) },
+        (response) => {
+          if (!response.ok) setError(response.error)
+        },
+      )
+    },
+    [room],
+  )
+
   const rollInitiative = useCallback(() => {
     if (!room || rollingRef.current) return
+    if (paceUntilRef.current > Date.now()) return
     getSocket().emit('initiative:roll', { code: room.code }, (response) => {
       if (!response.ok) setError(response.error)
     })
@@ -250,8 +392,11 @@ export function useOnlineGame() {
     setStatus('idle')
     setError(null)
     setDisplayDice(null)
+    setLastMove(null)
+    clearPaceTimer()
+    setPaceLocked(false)
     disconnectSocket()
-  }, [room])
+  }, [clearPaceTimer, room])
 
   const returnToLobby = useCallback(() => {
     if (!room) return
@@ -266,12 +411,14 @@ export function useOnlineGame() {
       if (!response.ok) setError(response.error)
       else {
         setDisplayDice(null)
+        setLastMove(null)
       }
     })
   }, [room])
 
   const roll = useCallback(() => {
     if (!room || rollingRef.current) return
+    if (paceUntilRef.current > Date.now()) return
     getSocket().emit('game:roll', { code: room.code }, (response) => {
       if (!response.ok) setError(response.error)
     })
@@ -280,6 +427,7 @@ export function useOnlineGame() {
   const selectCell = useCallback(
     (coordinate: Coordinate) => {
       if (!room || rollingRef.current) return
+      if (paceUntilRef.current > Date.now()) return
       getSocket().emit(
         'game:selectCell',
         { code: room.code, coordinate },
@@ -294,6 +442,7 @@ export function useOnlineGame() {
 
   const completeSkip = useCallback(() => {
     if (!room) return
+    if (paceUntilRef.current > Date.now()) return
     getSocket().emit('game:completeSkip', { code: room.code }, (response) => {
       if (!response.ok) setError(response.error)
       else setDisplayDice(null)
@@ -322,10 +471,13 @@ export function useOnlineGame() {
     shownDice,
     isMyTurn,
     canRollInitiative,
+    paceLocked,
+    lastMove,
     createRoom,
     joinRoom,
     startGame,
     setColor,
+    setName,
     rollInitiative,
     leaveRoom,
     returnToLobby,

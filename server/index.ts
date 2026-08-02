@@ -124,10 +124,18 @@ rooms.onCountdownFinished = (code) => {
   broadcastGame(code)
 }
 
+rooms.onBotUpdate = (code, dice) => {
+  if (dice) {
+    broadcastGame(code, dice)
+  } else {
+    broadcastGame(code)
+  }
+}
+
 io.on('connection', (socket) => {
   socket.on('room:create', (payload, callback) => {
     try {
-      const result = rooms.createRoom(socket.id, payload.playersCount)
+      const result = rooms.createRoom(socket.id, payload.playersCount, payload.name)
       if (result.ok) {
         void socket.join(result.room.code)
       }
@@ -141,7 +149,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('room:join', (payload, callback) => {
-    const result = rooms.joinRoom(socket.id, payload.code)
+    const result = rooms.joinRoom(socket.id, payload.code, payload.name)
     if (result.ok) {
       void socket.join(result.room.code)
       callback(result)
@@ -167,11 +175,20 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastRoom(payload.code)
+      rooms.scheduleBots(payload.code, 700)
     }
   })
 
   socket.on('room:setColor', (payload, callback) => {
     const result = rooms.setColor(socket.id, payload.code, payload.color)
+    callback(result)
+    if (result.ok) {
+      broadcastRoom(payload.code)
+    }
+  })
+
+  socket.on('room:setName', (payload, callback) => {
+    const result = rooms.setName(socket.id, payload.code, payload.name)
     callback(result)
     if (result.ok) {
       broadcastRoom(payload.code)
@@ -193,6 +210,7 @@ io.on('connection', (socket) => {
           dice: result.dice,
         })
       }
+      rooms.scheduleBots(payload.code, 700)
     }
   })
 
@@ -229,6 +247,7 @@ io.on('connection', (socket) => {
     callback(result.ok ? { ok: true } : { ok: false, error: result.error })
     if (result.ok) {
       broadcastGame(payload.code, result.dice)
+      rooms.scheduleBots(payload.code, 1600)
     }
   })
 
@@ -237,6 +256,7 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastGame(payload.code)
+      rooms.scheduleBots(payload.code, 1800)
     }
   })
 
@@ -245,6 +265,7 @@ io.on('connection', (socket) => {
     callback(result)
     if (result.ok) {
       broadcastGame(payload.code)
+      rooms.scheduleBots(payload.code, 1200)
     }
   })
 

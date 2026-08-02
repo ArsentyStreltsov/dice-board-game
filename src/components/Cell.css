@@ -71,6 +71,22 @@
   opacity: 1;
 }
 
+.cell--last-move {
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.55);
+  animation: last-move-pulse 1.4s ease-in-out infinite;
+  opacity: 1;
+}
+
+@keyframes last-move-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.7);
+  }
+}
+
 @keyframes win-pulse {
   0%,
   100% {

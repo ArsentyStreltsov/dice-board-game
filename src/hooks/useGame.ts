@@ -1,71 +1,133 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { chooseBotAction, type BotDifficulty } from '@shared/game/botAi.ts'
 import {
+  BOT_THINK_MS,
+  botDisplayName,
   createPlayers,
   DICE_ANIMATION_MS,
+  POST_ACTION_PAUSE_MS,
+  POST_ROLL_PAUSE_MS,
 } from '@shared/game/constants.ts'
-import { rollDice } from '@shared/game/gameLogic.ts'
+import { applyAction, rollDice } from '@shared/game/gameLogic.ts'
 import { nextInitiativeRoller } from '@shared/game/initiative.ts'
 import {
   createInitialState,
   gameReducer,
 } from '@shared/game/gameReducer.ts'
+import { checkWinner } from '@shared/game/winChecker.ts'
 import type {
   Coordinate,
   DiceResult,
-  Player,
   PlayerId,
 } from '@shared/game/types.ts'
+import type { MoveFlash } from '../components/MoveBanner.tsx'
+import {
+  playDiceLand,
+  playDiceRoll,
+  playPlace,
+  playRemove,
+  playSkip,
+  playWin,
+} from '../lib/sounds.ts'
 
 export type BotConfig = {
-  playerId: PlayerId
+  botIds: PlayerId[]
   difficulty: BotDifficulty
 }
 
-const BOT_THINK_MS = 550
+export type StartGameOptions = {
+  botDifficulty?: BotDifficulty
+  names?: Partial<Record<PlayerId, string>>
+  humanPlayerId?: PlayerId
+}
+
+function isBotId(botConfig: BotConfig | null, playerId: PlayerId | null): boolean {
+  if (!botConfig || playerId === null) return false
+  return botConfig.botIds.includes(playerId)
+}
 
 export function useGame() {
   const [state, dispatch] = useReducer(gameReducer, undefined, createInitialState)
   const [isRolling, setIsRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<DiceResult | null>(null)
   const [botConfig, setBotConfig] = useState<BotConfig | null>(null)
+  const [paceLocked, setPaceLocked] = useState(false)
+  const [lastMove, setLastMove] = useState<MoveFlash>(null)
   const rollingRef = useRef(false)
   const botBusyRef = useRef(false)
+  const paceUntilRef = useRef(0)
+  const paceTimerRef = useRef<number | null>(null)
   const stateRef = useRef(state)
   stateRef.current = state
+
+  const clearPaceTimer = useCallback(() => {
+    if (paceTimerRef.current !== null) {
+      window.clearTimeout(paceTimerRef.current)
+      paceTimerRef.current = null
+    }
+  }, [])
+
+  const lockPace = useCallback(
+    (ms: number) => {
+      clearPaceTimer()
+      const until = Date.now() + ms
+      paceUntilRef.current = until
+      setPaceLocked(true)
+      paceTimerRef.current = window.setTimeout(() => {
+        paceTimerRef.current = null
+        if (Date.now() >= paceUntilRef.current) {
+          setPaceLocked(false)
+        }
+      }, ms)
+    },
+    [clearPaceTimer],
+  )
 
   const startGame = useCallback(
     (
       playersCount: 2 | 3 | 4,
       colors?: Partial<Record<PlayerId, string>>,
-      options?: { botDifficulty?: BotDifficulty },
+      options?: StartGameOptions,
     ) => {
       setDisplayDice(null)
       setIsRolling(false)
       rollingRef.current = false
       botBusyRef.current = false
+      clearPaceTimer()
+      paceUntilRef.current = 0
+      setPaceLocked(false)
+      setLastMove(null)
 
-      const players = createPlayers(playersCount, colors)
+      const humanId = options?.humanPlayerId ?? 1
+      const names = { ...(options?.names ?? {}) }
+
       if (options?.botDifficulty) {
-        const withBotName: Player[] = players.map((p) =>
-          p.id === 2 ? { ...p, name: 'Компьютер' } : p,
-        )
-        setBotConfig({ playerId: 2, difficulty: options.botDifficulty })
+        const botIds: PlayerId[] = []
+        for (let i = 1; i <= playersCount; i++) {
+          const id = i as PlayerId
+          if (id === humanId) continue
+          botIds.push(id)
+        }
+        botIds.forEach((id, index) => {
+          names[id] = botDisplayName(index + 1, botIds.length)
+        })
+        const players = createPlayers(playersCount, colors, names)
+        setBotConfig({ botIds, difficulty: options.botDifficulty })
         dispatch({
           type: 'START_GAME',
           playersCount,
-          players: withBotName,
+          players,
         })
       } else {
         setBotConfig(null)
         dispatch({
           type: 'START_GAME',
           playersCount,
-          players,
+          players: createPlayers(playersCount, colors, names),
         })
       }
     },
-    [],
+    [clearPaceTimer],
   )
 
   const newGame = useCallback(() => {
@@ -73,27 +135,33 @@ export function useGame() {
     setIsRolling(false)
     rollingRef.current = false
     botBusyRef.current = false
+    clearPaceTimer()
+    paceUntilRef.current = 0
+    setPaceLocked(false)
+    setLastMove(null)
     setBotConfig(null)
     dispatch({ type: 'NEW_GAME' })
-  }, [])
+  }, [clearPaceTimer])
 
   const animateThen = useCallback((dice: DiceResult, then: () => void) => {
     if (rollingRef.current) return
     rollingRef.current = true
     setIsRolling(true)
+    playDiceRoll()
 
     const interval = window.setInterval(() => {
       setDisplayDice({
         first: Math.floor(Math.random() * 6) + 1,
         second: Math.floor(Math.random() * 6) + 1,
       })
-    }, 50)
+    }, 55)
 
     window.setTimeout(() => {
       window.clearInterval(interval)
       setDisplayDice(dice)
       setIsRolling(false)
       rollingRef.current = false
+      playDiceLand()
       then()
     }, DICE_ANIMATION_MS)
   }, [])
@@ -101,17 +169,18 @@ export function useGame() {
   const performRoll = useCallback(
     (dice: DiceResult) => {
       if (stateRef.current.phase !== 'waitingForRoll') return
+      setLastMove(null)
       animateThen(dice, () => {
         dispatch({ type: 'ROLL_DICE', dice })
+        lockPace(POST_ROLL_PAUSE_MS)
       })
     },
-    [animateThen],
+    [animateThen, lockPace],
   )
 
   const roll = useCallback(() => {
-    if (botConfig && stateRef.current.currentPlayerId === botConfig.playerId) {
-      return
-    }
+    if (isBotId(botConfig, stateRef.current.currentPlayerId)) return
+    if (paceUntilRef.current > Date.now()) return
     performRoll(rollDice())
   }, [botConfig, performRoll])
 
@@ -121,75 +190,78 @@ export function useGame() {
     }
     const playerId = nextInitiativeRoller(stateRef.current.initiative)
     if (!playerId) return
-    if (botConfig && playerId === botConfig.playerId) return
+    if (isBotId(botConfig, playerId)) return
     const dice = rollDice()
     animateThen(dice, () => {
       dispatch({ type: 'INITIATIVE_ROLL', dice, playerId })
       setDisplayDice(null)
+      lockPace(POST_ROLL_PAUSE_MS)
     })
-  }, [animateThen, botConfig])
+  }, [animateThen, botConfig, lockPace])
 
-  const rollWithValues = useCallback(
-    (first: number, second: number) => {
-      if (stateRef.current.phase === 'initiative') {
-        const playerId = stateRef.current.initiative
-          ? nextInitiativeRoller(stateRef.current.initiative)
+  const applyCellSelection = useCallback(
+    (coordinate: Coordinate, actorId: PlayerId) => {
+      const before = stateRef.current
+      const action = before.availableActions.find(
+        (a) =>
+          a.coordinate.row === coordinate.row &&
+          a.coordinate.column === coordinate.column,
+      )
+      const kind =
+        action?.action === 'place' || action?.action === 'remove'
+          ? action.action
           : null
-        if (!playerId) return
-        const dice = { first, second }
-        animateThen(dice, () => {
-          dispatch({ type: 'INITIATIVE_ROLL', dice, playerId })
-          setDisplayDice(null)
-        })
-        return
+      const actor = before.players.find((p) => p.id === actorId)
+
+      let won = false
+      if (kind === 'place') {
+        const applied = applyAction(before.board, coordinate, actorId)
+        if (applied.kind === 'place') {
+          won = checkWinner(applied.board, actorId).won
+        }
       }
-      performRoll({ first, second })
+
+      dispatch({ type: 'SELECT_CELL', coordinate })
+      setDisplayDice(null)
+
+      if (kind && actor) {
+        setLastMove({ player: actor, coordinate, kind })
+        if (kind === 'place') playPlace()
+        else playRemove()
+      }
+
+      if (won) {
+        playWin()
+      } else {
+        lockPace(POST_ACTION_PAUSE_MS)
+      }
     },
-    [animateThen, performRoll],
+    [lockPace],
   )
 
   const selectCell = useCallback(
     (coordinate: Coordinate) => {
       if (rollingRef.current) return
-      if (botConfig && stateRef.current.currentPlayerId === botConfig.playerId) {
-        return
-      }
-      dispatch({ type: 'SELECT_CELL', coordinate })
-      setDisplayDice(null)
+      if (paceUntilRef.current > Date.now()) return
+      if (isBotId(botConfig, stateRef.current.currentPlayerId)) return
+      applyCellSelection(coordinate, stateRef.current.currentPlayerId)
     },
-    [botConfig],
+    [applyCellSelection, botConfig],
   )
 
   const completeSkip = useCallback(() => {
-    if (botConfig && stateRef.current.currentPlayerId === botConfig.playerId) {
-      return
-    }
+    if (isBotId(botConfig, stateRef.current.currentPlayerId)) return
+    if (paceUntilRef.current > Date.now()) return
+    playSkip()
     dispatch({ type: 'COMPLETE_SKIP' })
     setDisplayDice(null)
-  }, [botConfig])
-
-  const devClearBoard = useCallback(() => {
-    dispatch({ type: 'DEV_CLEAR_BOARD' })
-    setDisplayDice(null)
-  }, [])
-
-  const devNextPlayer = useCallback(() => {
-    dispatch({ type: 'DEV_NEXT_PLAYER' })
-    setDisplayDice(null)
-  }, [])
-
-  const devSetCell = useCallback(
-    (coordinate: Coordinate, playerId: PlayerId | null) => {
-      dispatch({ type: 'DEV_SET_CELL', coordinate, playerId })
-      setDisplayDice(null)
-    },
-    [],
-  )
+    setLastMove(null)
+    lockPace(POST_ACTION_PAUSE_MS)
+  }, [botConfig, lockPace])
 
   const shownDice = displayDice ?? state.dice
-  const isBotTurn = Boolean(
-    botConfig && state.currentPlayerId === botConfig.playerId,
-  )
+  const isBotTurn = isBotId(botConfig, state.currentPlayerId)
+  const canAct = !isRolling && !paceLocked && !isBotTurn
 
   useEffect(() => {
     if (state.phase !== 'countdown' || !state.initiative?.startsAt) return
@@ -209,22 +281,23 @@ export function useGame() {
     }
   }, [state.phase, state.dice])
 
-  // Автоход бота
+  // Автоход ботов
   useEffect(() => {
     if (!botConfig) return
-    if (rollingRef.current || botBusyRef.current || isRolling) return
-
-    const botId = botConfig.playerId
+    if (rollingRef.current || botBusyRef.current || isRolling || paceLocked) {
+      return
+    }
 
     if (state.phase === 'initiative' && state.initiative) {
       const roller = nextInitiativeRoller(state.initiative)
-      if (roller !== botId) return
+      if (!roller || !isBotId(botConfig, roller)) return
       botBusyRef.current = true
       const timer = window.setTimeout(() => {
         const dice = rollDice()
         animateThen(dice, () => {
-          dispatch({ type: 'INITIATIVE_ROLL', dice, playerId: botId })
+          dispatch({ type: 'INITIATIVE_ROLL', dice, playerId: roller })
           setDisplayDice(null)
+          lockPace(POST_ROLL_PAUSE_MS)
           botBusyRef.current = false
         })
       }, BOT_THINK_MS)
@@ -234,8 +307,10 @@ export function useGame() {
       }
     }
 
-    if (state.currentPlayerId !== botId) return
+    if (!isBotId(botConfig, state.currentPlayerId)) return
     if (state.phase === 'gameOver' || state.phase === 'countdown') return
+
+    const botId = state.currentPlayerId
 
     if (state.phase === 'waitingForRoll') {
       botBusyRef.current = true
@@ -260,8 +335,7 @@ export function useGame() {
           botConfig.difficulty,
         )
         if (choice) {
-          dispatch({ type: 'SELECT_CELL', coordinate: choice })
-          setDisplayDice(null)
+          applyCellSelection(choice, botId)
         }
         botBusyRef.current = false
       }, BOT_THINK_MS)
@@ -274,8 +348,11 @@ export function useGame() {
     if (state.phase === 'turnSkipped') {
       botBusyRef.current = true
       const timer = window.setTimeout(() => {
+        playSkip()
         dispatch({ type: 'COMPLETE_SKIP' })
         setDisplayDice(null)
+        setLastMove(null)
+        lockPace(POST_ACTION_PAUSE_MS)
         botBusyRef.current = false
       }, BOT_THINK_MS)
       return () => {
@@ -285,8 +362,11 @@ export function useGame() {
     }
   }, [
     animateThen,
+    applyCellSelection,
     botConfig,
     isRolling,
+    lockPace,
+    paceLocked,
     performRoll,
     state.availableActions,
     state.board,
@@ -302,15 +382,14 @@ export function useGame() {
     shownDice,
     botConfig,
     isBotTurn,
+    paceLocked,
+    canAct,
+    lastMove,
     startGame,
     newGame,
     roll,
     rollInitiative,
-    rollWithValues,
     selectCell,
     completeSkip,
-    devClearBoard,
-    devNextPlayer,
-    devSetCell,
   }
 }

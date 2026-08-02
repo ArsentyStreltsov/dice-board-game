@@ -14,6 +14,7 @@ type CellProps = {
   accentColor: string
   isWinning: boolean
   isDimmed: boolean
+  isLastMove?: boolean
   onSelect: (coordinate: Coordinate) => void
 }
 
@@ -28,6 +29,7 @@ export function Cell({
   accentColor,
   isWinning,
   isDimmed,
+  isLastMove = false,
   onSelect,
 }: CellProps) {
   const player = value ? players.find((p) => p.id === value) : undefined
@@ -46,6 +48,7 @@ export function Cell({
     selectable ? 'cell--selectable' : '',
     isWinning ? 'cell--winning' : '',
     isDimmed ? 'cell--dimmed' : '',
+    isLastMove ? 'cell--last-move' : '',
     actionKind === 'place' && highlighted ? 'cell--place' : '',
     actionKind === 'remove' && highlighted ? 'cell--remove' : '',
   ]

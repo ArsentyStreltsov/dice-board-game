@@ -88,6 +88,7 @@ export type RoomMember = {
   token: string
   connected: boolean
   color: string
+  isBot?: boolean
 }
 
 export type RoomStatus = 'lobby' | 'initiative' | 'countdown' | 'playing' | 'finished'
@@ -101,6 +102,7 @@ export type RoomPublic = {
     name: string
     connected: boolean
     color: string
+    isBot?: boolean
   }>
   status: RoomStatus
   game: GameState | null
@@ -109,11 +111,11 @@ export type RoomPublic = {
 
 export type ClientToServerEvents = {
   'room:create': (
-    payload: { playersCount: 2 | 3 | 4 },
+    payload: { playersCount: 2 | 3 | 4; name?: string },
     callback: (response: RoomJoinResponse) => void,
   ) => void
   'room:join': (
-    payload: { code: string },
+    payload: { code: string; name?: string },
     callback: (response: RoomJoinResponse) => void,
   ) => void
   'room:rejoin': (
@@ -122,6 +124,10 @@ export type ClientToServerEvents = {
   ) => void
   'room:setColor': (
     payload: { code: string; color: string },
+    callback: (response: ActionResponse) => void,
+  ) => void
+  'room:setName': (
+    payload: { code: string; name: string },
     callback: (response: ActionResponse) => void,
   ) => void
   'room:start': (

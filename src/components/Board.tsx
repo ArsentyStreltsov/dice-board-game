@@ -20,6 +20,8 @@ type BoardProps = {
   interactive: boolean
   /** Цвет текущего игрока для подсветки */
   accentColor?: string
+  /** Последний ход — подсветка клетки */
+  lastMove?: Coordinate | null
   onSelect: (coordinate: Coordinate) => void
 }
 
@@ -31,6 +33,7 @@ export function Board({
   showTargets,
   interactive,
   accentColor = '#2563eb',
+  lastMove = null,
   onSelect,
 }: BoardProps) {
   const actionMap = new Map<string, ActionKind>()
@@ -39,6 +42,7 @@ export function Board({
   }
 
   const winningSet = new Set(winningCells.map(key))
+  const lastMoveKey = lastMove ? key(lastMove) : null
 
   return (
     <div className="board-wrap">
@@ -65,6 +69,7 @@ export function Board({
               const selectable = isTarget && interactive
               const isWinning = winningSet.has(key(coordinate))
               const isDimmed = showTargets && !isTarget && !isWinning
+              const isLastMove = lastMoveKey === key(coordinate)
 
               return (
                 <Cell
@@ -79,6 +84,7 @@ export function Board({
                   accentColor={accentColor}
                   isWinning={isWinning}
                   isDimmed={isDimmed}
+                  isLastMove={isLastMove}
                   onSelect={onSelect}
                 />
               )

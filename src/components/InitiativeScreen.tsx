@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { diceSum } from '@shared/game/initiative.ts'
 import type {
   DiceResult,
   InitiativeState,
   Player,
-  PlayerId,
 } from '@shared/game/types.ts'
 import { Dice } from './Dice'
 import './InitiativeScreen.css'
@@ -12,25 +11,25 @@ import './InitiativeScreen.css'
 type InitiativeScreenProps = {
   players: Player[]
   initiative: InitiativeState
-  myPlayerId?: PlayerId | null
   canRoll: boolean
   isRolling: boolean
   shownDice: DiceResult | null
   onRoll: () => void
   onLeave?: () => void
   modeLabel?: string
+  headerExtra?: ReactNode
 }
 
 export function InitiativeScreen({
   players,
   initiative,
-  myPlayerId,
   canRoll,
   isRolling,
   shownDice,
   onRoll,
   onLeave,
   modeLabel = 'Определение первого хода',
+  headerExtra,
 }: InitiativeScreenProps) {
   const winnerId = initiative.winnerId
   const startsAt = initiative.startsAt
@@ -59,6 +58,7 @@ export function InitiativeScreen({
 
   return (
     <section className="initiative-screen">
+      {headerExtra ? <div className="app-chrome">{headerExtra}</div> : null}
       <div className="initiative-screen__card">
         <p className="initiative-screen__eyebrow">{modeLabel}</p>
         <h1 className="initiative-screen__title">
@@ -95,7 +95,6 @@ export function InitiativeScreen({
                 />
                 <span className="initiative-screen__name">
                   {player?.name ?? `Игрок ${id}`}
-                  {myPlayerId === id ? ' (вы)' : ''}
                   {isWinner ? ' · первый' : ''}
                 </span>
                 <span className="initiative-screen__roll">

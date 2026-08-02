@@ -2,11 +2,13 @@ import { randomBytes } from 'node:crypto'
 import {
   createPlayers,
   defaultColorForSeat,
+  botDisplayName,
   INITIATIVE_COUNTDOWN_MS,
   isValidColor,
   normalizeColor,
   PLAYER_SHAPES,
 } from '../shared/game/constants.ts'
+import { chooseBotAction } from '../shared/game/botAi.ts'
 import { rollDice } from '../shared/game/gameLogic.ts'
 import {
   allContendersRolled,
@@ -47,6 +49,12 @@ export type Room = {
 export class RoomManager {
   private rooms = new Map<string, Room>()
   private countdownTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private botTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  /** Колбэк после автостарта партии — выставляет сервер index.ts */
+  onCountdownFinished: ((code: string) => void) | null = null
+  /** Колбэк после хода/броска бота */
+  onBotUpdate: ((code: string, dice?: DiceResult) => void) | null = null
 
   private clearCountdownTimer(code: string): void {
     const timer = this.countdownTimers.get(code)
@@ -56,16 +64,37 @@ export class RoomManager {
     }
   }
 
+  private clearBotTimer(code: string): void {
+    const timer = this.botTimers.get(code)
+    if (timer) {
+      clearTimeout(timer)
+      this.botTimers.delete(code)
+    }
+  }
+
+  scheduleBots(code: string, delayMs = 900): void {
+    const normalized = normalizeCode(code)
+    this.clearBotTimer(normalized)
+    this.botTimers.set(
+      normalized,
+      setTimeout(() => {
+        this.botTimers.delete(normalized)
+        this.tickBots(normalized)
+      }, delayMs),
+    )
+  }
+
   createRoom(
     socketId: string,
     playersCount: 2 | 3 | 4,
+    rawName?: string,
   ): RoomJoinResponse {
     const code = this.generateUniqueCode()
     const token = createToken()
     const member: RoomMember = {
       socketId,
       playerId: 1,
-      name: 'Игрок 1',
+      name: sanitizeName(rawName, 1),
       token,
       connected: true,
       color: defaultColorForSeat(0),
@@ -92,7 +121,7 @@ export class RoomManager {
     }
   }
 
-  joinRoom(socketId: string, rawCode: string): RoomJoinResponse {
+  joinRoom(socketId: string, rawCode: string, rawName?: string): RoomJoinResponse {
     const code = normalizeCode(rawCode)
     const room = this.rooms.get(code)
     if (!room) {
@@ -131,7 +160,7 @@ export class RoomManager {
     const member: RoomMember = {
       socketId,
       playerId,
-      name: `Игрок ${playerId}`,
+      name: sanitizeName(rawName, playerId),
       token,
       connected: true,
       color,
@@ -145,6 +174,25 @@ export class RoomManager {
       token,
       isHost: room.hostPlayerId === playerId,
     }
+  }
+
+  setName(socketId: string, rawCode: string, rawName: string): ActionResponse {
+    const room = this.getRoom(rawCode)
+    if (!room) return { ok: false, error: 'Комната не найдена.' }
+    if (room.status !== 'lobby') {
+      return { ok: false, error: 'Имя можно менять только в лобби.' }
+    }
+
+    const member = room.members.find((m) => m.socketId === socketId)
+    if (!member) return { ok: false, error: 'Вы не в этой комнате.' }
+
+    const name = sanitizeName(rawName, member.playerId)
+    if (name.length < 2) {
+      return { ok: false, error: 'Имя слишком короткое.' }
+    }
+
+    member.name = name
+    return { ok: true }
   }
 
   setColor(
@@ -258,12 +306,14 @@ export class RoomManager {
     if (room.status !== 'lobby') {
       return { ok: false, error: 'Игра уже запущена.' }
     }
-    if (room.members.length !== room.playersCount) {
-      return {
-        ok: false,
-        error: `Нужно ${room.playersCount} игрока(ов). Сейчас: ${room.members.length}.`,
-      }
+
+    const humans = room.members.filter((m) => !m.isBot)
+    if (humans.length < 1) {
+      return { ok: false, error: 'Нужен хотя бы один игрок.' }
     }
+
+    this.stripBots(room)
+    this.fillEmptySeatsWithBots(room)
 
     const colors = Object.fromEntries(
       room.members.map((m) => [m.playerId, m.color]),
@@ -274,7 +324,6 @@ export class RoomManager {
       room.members.map((m) => m.playerId),
     )
     room.status = 'initiative'
-    // stash players preview on a temporary game shell for UI names/colors
     room.game = {
       ...createInitialState(),
       phase: 'initiative',
@@ -286,6 +335,8 @@ export class RoomManager {
       playersCount: room.playersCount,
       initiative: room.initiative,
     }
+
+    this.scheduleBots(room.code, 700)
     return { ok: true }
   }
 
@@ -364,14 +415,12 @@ export class RoomManager {
         if (!current || current.status !== 'countdown') return
         this.beginPlaying(current, resolved.playerId)
         this.onCountdownFinished?.(current.code)
+        this.scheduleBots(current.code, 800)
       }, INITIATIVE_COUNTDOWN_MS),
     )
 
     return { ok: true, dice, countdown: true }
   }
-
-  /** Колбэк после автостарта партии — выставляет сервер index.ts */
-  onCountdownFinished: ((code: string) => void) | null = null
 
   returnToLobby(socketId: string, rawCode: string): ActionResponse {
     const room = this.getRoom(rawCode)
@@ -384,9 +433,11 @@ export class RoomManager {
     }
 
     this.clearCountdownTimer(room.code)
+    this.clearBotTimer(room.code)
     room.game = null
     room.initiative = null
     room.status = 'lobby'
+    this.stripBots(room)
     return { ok: true }
   }
 
@@ -399,14 +450,13 @@ export class RoomManager {
     if (member.playerId !== room.hostPlayerId) {
       return { ok: false, error: 'Только хост может начать новую партию.' }
     }
-    if (room.members.length !== room.playersCount) {
-      return { ok: false, error: 'Недостаточно игроков для новой партии.' }
-    }
 
-    // Back to lobby colors, then initiative again
+    this.clearCountdownTimer(room.code)
+    this.clearBotTimer(room.code)
     room.status = 'lobby'
     room.game = null
     room.initiative = null
+    this.stripBots(room)
     return this.startGame(socketId, rawCode)
   }
 
@@ -502,13 +552,181 @@ export class RoomManager {
       startingPlayerId,
       skipInitiative: true,
     })
-    // Гарантированно пустые кубики на старте партии
     room.game = {
       ...room.game,
       dice: null,
     }
     room.initiative = null
     room.status = 'playing'
+  }
+
+  private stripBots(room: Room): void {
+    room.members = room.members.filter((m) => !m.isBot)
+  }
+
+  private fillEmptySeatsWithBots(room: Room): void {
+    const takenColors = new Set(room.members.map((m) => m.color))
+    const botsToAdd = room.playersCount - room.members.length
+    if (botsToAdd <= 0) return
+
+    let botIndex = 0
+    while (room.members.length < room.playersCount) {
+      botIndex++
+      const playerId = (room.members.length + 1) as PlayerId
+      let color = defaultColorForSeat(room.members.length)
+      if (takenColors.has(color)) {
+        color =
+          [
+            defaultColorForSeat(0),
+            defaultColorForSeat(1),
+            defaultColorForSeat(2),
+            defaultColorForSeat(3),
+            defaultColorForSeat(4),
+            defaultColorForSeat(5),
+            defaultColorForSeat(6),
+            defaultColorForSeat(7),
+            defaultColorForSeat(8),
+            defaultColorForSeat(9),
+          ].find((c) => !takenColors.has(c)) ?? defaultColorForSeat(playerId)
+      }
+      takenColors.add(color)
+      room.members.push({
+        socketId: null,
+        playerId,
+        name: botDisplayName(botIndex, botsToAdd),
+        token: createToken(),
+        connected: true,
+        color,
+        isBot: true,
+      })
+    }
+  }
+
+  private isBotPlayer(room: Room, playerId: PlayerId): boolean {
+    return Boolean(room.members.find((m) => m.playerId === playerId)?.isBot)
+  }
+
+  private tickBots(code: string): void {
+    const room = this.rooms.get(normalizeCode(code))
+    if (!room) return
+
+    if (room.status === 'initiative' && room.initiative) {
+      const pendingBot = room.initiative.contenders.find(
+        (id) =>
+          room.initiative!.rolls[id] === undefined && this.isBotPlayer(room, id),
+      )
+      if (pendingBot === undefined) return
+
+      const dice = rollDice()
+      room.initiative = applyInitiativeRoll(room.initiative, pendingBot, dice)
+      if (room.game) {
+        room.game = {
+          ...room.game,
+          initiative: room.initiative,
+          dice,
+        }
+      }
+
+      if (!allContendersRolled(room.initiative)) {
+        this.onBotUpdate?.(room.code, dice)
+        this.scheduleBots(room.code, 750)
+        return
+      }
+
+      const resolved = resolveInitiativeRound(room.initiative)
+      if (resolved.kind === 'reroll') {
+        room.initiative = resolved.next
+        if (room.game) {
+          room.game = {
+            ...room.game,
+            initiative: resolved.next,
+            dice: null,
+          }
+        }
+        this.onBotUpdate?.(room.code, dice)
+        this.scheduleBots(room.code, 750)
+        return
+      }
+
+      const startsAt = Date.now() + INITIATIVE_COUNTDOWN_MS
+      room.initiative = {
+        ...room.initiative,
+        winnerId: resolved.playerId,
+        startsAt,
+      }
+      room.status = 'countdown'
+      if (room.game) {
+        room.game = {
+          ...room.game,
+          phase: 'countdown',
+          currentPlayerId: resolved.playerId,
+          dice: null,
+          initiative: room.initiative,
+        }
+      }
+
+      this.clearCountdownTimer(room.code)
+      this.countdownTimers.set(
+        room.code,
+        setTimeout(() => {
+          this.countdownTimers.delete(room.code)
+          const current = this.rooms.get(room.code)
+          if (!current || current.status !== 'countdown') return
+          this.beginPlaying(current, resolved.playerId)
+          this.onCountdownFinished?.(current.code)
+          this.scheduleBots(current.code, 800)
+        }, INITIATIVE_COUNTDOWN_MS),
+      )
+
+      this.onBotUpdate?.(room.code, dice)
+      return
+    }
+
+    if (room.status !== 'playing' || !room.game) return
+    if (room.game.phase === 'gameOver') return
+    if (!this.isBotPlayer(room, room.game.currentPlayerId)) return
+
+    const botId = room.game.currentPlayerId
+
+    if (room.game.phase === 'waitingForRoll') {
+      const dice = rollDice()
+      const next = gameReducer(room.game, { type: 'ROLL_DICE', dice })
+      room.game = next
+      this.onBotUpdate?.(room.code, dice)
+      this.scheduleBots(room.code, 1600)
+      return
+    }
+
+    if (room.game.phase === 'selectingCell') {
+      const choice = chooseBotAction(
+        room.game.board,
+        botId,
+        room.game.availableActions,
+        room.game.playersCount,
+        'medium',
+      )
+      if (!choice) return
+      const next = gameReducer(room.game, {
+        type: 'SELECT_CELL',
+        coordinate: choice,
+      })
+      room.game = next
+      if (next.phase === 'gameOver') {
+        room.status = 'finished'
+      }
+      this.onBotUpdate?.(room.code)
+      if (next.phase !== 'gameOver') {
+        this.scheduleBots(room.code, 1800)
+      }
+      return
+    }
+
+    if (room.game.phase === 'turnSkipped') {
+      const next = gameReducer(room.game, { type: 'COMPLETE_SKIP' })
+      room.game = next
+      this.onBotUpdate?.(room.code)
+      this.scheduleBots(room.code, 1200)
+    }
   }
 
   private gateTurn(
@@ -574,10 +792,18 @@ export class RoomManager {
       return {
         ...member,
         playerId,
-        name: `Игрок ${playerId}`,
       }
     })
   }
+}
+
+export function sanitizeName(raw: string | undefined, playerId: PlayerId): string {
+  const cleaned = (raw ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 20)
+  if (cleaned.length >= 2) return cleaned
+  return `Игрок ${playerId}`
 }
 
 export function generateCode(length: number): string {
@@ -607,6 +833,7 @@ export function toPublic(room: Room): RoomPublic {
       name: m.name,
       connected: m.connected,
       color: m.color,
+      isBot: m.isBot,
     })),
     status: room.status,
     game: room.game,

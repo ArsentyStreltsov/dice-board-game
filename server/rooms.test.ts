@@ -51,6 +51,20 @@ describe('RoomManager', () => {
     expect(conflict.ok).toBe(false)
   })
 
+  it('заполняет пустые места ботами при старте', () => {
+    const manager = new RoomManager()
+    const created = manager.createRoom('s1', 4, 'Хост')
+    if (!created.ok) throw new Error('create failed')
+    manager.joinRoom('s2', created.room.code, 'Гость')
+
+    const started = manager.startGame('s1', created.room.code)
+    expect(started.ok).toBe(true)
+    const room = manager.getRoomForTests(created.room.code)!
+    expect(room.members).toHaveLength(4)
+    expect(room.members.filter((m) => m.isBot)).toHaveLength(2)
+    expect(room.status).toBe('initiative')
+  })
+
   it('после старта идёт инициатива, ходит победитель броска', () => {
     const manager = new RoomManager()
     const created = manager.createRoom('s1', 2)

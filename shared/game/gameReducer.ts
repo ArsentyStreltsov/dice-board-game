@@ -12,7 +12,6 @@ import {
   getNextPlayer,
   getPossibleCoordinates,
   hasPlayableAction,
-  setCell,
 } from './gameLogic.ts'
 import {
   allContendersRolled,
@@ -45,9 +44,6 @@ export type GameAction =
   | { type: 'SELECT_CELL'; coordinate: Coordinate }
   | { type: 'COMPLETE_SKIP' }
   | { type: 'NEW_GAME' }
-  | { type: 'DEV_CLEAR_BOARD' }
-  | { type: 'DEV_NEXT_PLAYER' }
-  | { type: 'DEV_SET_CELL'; coordinate: Coordinate; playerId: PlayerId | null }
 
 function createInitialState(): GameState {
   return {
@@ -388,63 +384,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       return passTurnAfterAction(state, state)
-    }
-
-    case 'DEV_CLEAR_BOARD': {
-      if (state.phase === 'setup' || state.phase === 'initiative') return state
-
-      return {
-        ...state,
-        board: createEmptyBoard(),
-        phase: 'waitingForRoll',
-        winner: null,
-        winningCells: [],
-        ...clearTurnFields(),
-        ...addLog(state, 'Поле очищено (режим тестирования).'),
-      }
-    }
-
-    case 'DEV_NEXT_PLAYER': {
-      if (
-        state.phase === 'setup' ||
-        state.phase === 'gameOver' ||
-        state.phase === 'initiative'
-      ) {
-        return state
-      }
-
-      const nextPlayer = getNextPlayer(
-        state.currentPlayerId,
-        state.playersCount,
-      )
-
-      return {
-        ...state,
-        phase: 'waitingForRoll',
-        currentPlayerId: nextPlayer,
-        ...clearTurnFields(),
-        ...addLog(
-          state,
-          `Ход передан ${playerName(state, nextPlayer)} (режим тестирования).`,
-        ),
-      }
-    }
-
-    case 'DEV_SET_CELL': {
-      if (
-        state.phase === 'setup' ||
-        state.phase === 'gameOver' ||
-        state.phase === 'initiative'
-      ) {
-        return state
-      }
-
-      return {
-        ...state,
-        board: setCell(state.board, action.coordinate, action.playerId),
-        phase: 'waitingForRoll',
-        ...clearTurnFields(),
-      }
     }
 
     default:

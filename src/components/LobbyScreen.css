@@ -31,6 +31,30 @@
   color: #0f172a;
 }
 
+.lobby-screen__name {
+  display: grid;
+  gap: 0.4rem;
+  text-align: left;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.lobby-screen__name-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.lobby-screen__name input {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
 .lobby-screen__code-block {
   display: grid;
   gap: 0.45rem;
